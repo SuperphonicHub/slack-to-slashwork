@@ -47,7 +47,7 @@
       "release": true
     },
     "hooks": {
-      "before:npm:publish": "npm run build",
+      "before:npm": "npm run build",
       "after:bump": "npx auto-changelog -p"
     }
   }
