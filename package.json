@@ -1,6 +1,6 @@
 {
   "name": "slack-to-slashwork",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Simple pushing of new messages from Slack channels into Slashwork groups via Slack's Events API webhook.",
   "main": "dist/index.js",
   "scripts": {
