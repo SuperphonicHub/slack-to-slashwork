@@ -63,7 +63,6 @@ export type { EnvelopedEvent, SlackEvent };
  */
 interface MessageInput {
   body: string;
-  markdown: string;
 }
 
 async function createPost(
@@ -234,7 +233,6 @@ export function createSlackWebhook(
             parentPostId,
             {
               body: text,
-              markdown: text,
             }
           );
         } else {
@@ -250,7 +248,6 @@ export function createSlackWebhook(
           groupId,
           {
             body: text,
-            markdown: text,
           }
         );
 
