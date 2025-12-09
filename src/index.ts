@@ -58,9 +58,9 @@ async function createPost(
   input: CreatePostMutationInput
 ): Promise<void> {
   const mutation = `
-    mutation CreatePost($groupId: ID!, $input: CreatePostInput!) {
+    mutation ($groupId: ID!, $input: CreatePostMutationInput!) {
       createPost(groupId: $groupId, input: $input) {
-        id
+        node
       }
     }
   `;
@@ -88,7 +88,7 @@ async function createPost(
     throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
   }
 
-  console.log("Created post:", result.data?.createPost?.id);
+  console.log("Created post:", result.data?.createPost?.node);
 }
 
 export function createSlackWebhook(
