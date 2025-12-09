@@ -1,11 +1,24 @@
 {
   "name": "slack-to-slashwork",
   "version": "1.0.0",
+  "description": "Simple pushing of new messages from Slack channels into Slashwork groups via Slack's Events API webhook.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
+    "dev": "ts-node src/index.ts",
+    "release": "release-it"
+  },
+  "keywords": [
+    "slack",
+    "slashwork",
+    "webhook"
+  ],
+  "author": "Philip Su",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/superphonic/slack-to-slashwork.git"
   },
   "engines": {
     "node": "20"
@@ -14,8 +27,27 @@
     "@slack/bolt": "^4.6.0"
   },
   "devDependencies": {
+    "@release-it/conventional-changelog": "^5.1.1",
     "@types/node": "^20.0.0",
+    "release-it": "^15.5.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.0"
+  },
+  "release-it": {
+    "plugins": {
+      "@release-it/conventional-changelog": {
+        "preset": "angular",
+        "infile": false
+      }
+    },
+    "git": {
+      "changelog": "npx auto-changelog --stdout --commit-limit false -u --template https://raw.githubusercontent.com/release-it/release-it/main/templates/changelog-compact.hbs"
+    },
+    "github": {
+      "release": true
+    },
+    "hooks": {
+      "after:bump": "npx auto-changelog -p"
+    }
   }
 }

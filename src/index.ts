@@ -35,7 +35,7 @@ export interface SlackWebhookResponse {
 export interface SlackWebhookConfig {
   graphqlEndpoint: string;
   bearerToken: string;
-  // Future: groupMappings to map Slack channels to GraphQL groups
+  groupMappings: Record<string, string>; // A map of Slack channel IDs to Slashwork groupIDs.
 }
 
 export type SlackWebhookHandler = (
@@ -54,7 +54,7 @@ export function createSlackWebhook(
     bearerToken: "[REDACTED]",
   });
 
-  return (req, res) => {
+  return async (req, res) => {
     const payload = req.body;
 
     // Handle Slack URL verification challenge
