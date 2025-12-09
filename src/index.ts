@@ -46,7 +46,7 @@ export type SlackWebhookHandler = (
 // Re-export useful Slack types for consumers
 export type { EnvelopedEvent, SlackEvent };
 
-export function CreateSlackWebhook(
+export function createSlackWebhook(
   config: SlackWebhookConfig
 ): SlackWebhookHandler {
   console.log("Creating Slack webhook with config:", {
