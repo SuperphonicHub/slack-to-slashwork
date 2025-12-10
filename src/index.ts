@@ -48,6 +48,7 @@ export interface SlackWebhookConfig {
   bearerToken: string;
   groupMappings: Record<string, string>; // A map of Slack channel IDs to Slashwork groupIDs.
   slackIdMap?: SlackIdMap; // Optional mapping for threaded conversation support.
+  getSlackUsername?: (userId: string) => string | Promise<string>; // Optional function to resolve Slack user IDs to usernames.
 }
 
 export type SlackWebhookHandler = (
@@ -207,9 +208,20 @@ export function createSlackWebhook(
     const text = (event as { text?: string }).text ?? "";
     const ts = (event as { ts?: string }).ts;
     const threadTs = (event as { thread_ts?: string }).thread_ts;
+    const userId = (event as { user?: string }).user;
 
     // Determine if this is a threaded reply (thread_ts exists and differs from ts)
     const isThreadedReply = threadTs && threadTs !== ts;
+
+    // Optionally prefix with username
+    let body = text;
+    if (config.getSlackUsername && userId) {
+      const username = await config.getSlackUsername(userId);
+
+      if (username) {
+        body = `[${username}] ${text}`;
+      }
+    }
 
     try {
       if (isThreadedReply) {
@@ -232,7 +244,7 @@ export function createSlackWebhook(
             config.bearerToken,
             parentPostId,
             {
-              body: text,
+              body,
             }
           );
         } else {
@@ -247,7 +259,7 @@ export function createSlackWebhook(
           config.bearerToken,
           groupId,
           {
-            body: text,
+            body,
           }
         );
 
