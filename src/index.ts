@@ -151,12 +151,6 @@ async function createComment(
 export function createSlackWebhook(
   config: SlackWebhookConfig
 ): SlackWebhookHandler {
-  console.log("Creating Slack webhook with config:", {
-    graphqlEndpoint: config.graphqlEndpoint,
-    bearerToken: "[REDACTED]",
-    groupMappings: config.groupMappings,
-  });
-
   return async (req, res) => {
     const payload = req.body;
 
@@ -168,23 +162,7 @@ export function createSlackWebhook(
     }
 
     // At this point, payload is EnvelopedEvent
-    const { event, team_id, event_id, event_time } = payload;
-
-    // Log the full Slack event payload
-    console.log(
-      "Received Slack event:",
-      JSON.stringify(
-        {
-          type: payload.type,
-          team_id,
-          event_id,
-          event_time,
-          event,
-        },
-        null,
-        2
-      )
-    );
+    const { event } = payload;
 
     // Acknowledge receipt immediately (Slack expects response within 3 seconds)
     res.status(200).send();
@@ -192,7 +170,7 @@ export function createSlackWebhook(
     // Check if event has a channel and if it's mapped
     const channel = (event as { channel?: string }).channel;
     if (!channel) {
-      console.log("Event has no channel, skipping");
+      console.log("Event has no channel, skipping", event);
       res.status(200).send();
       return;
     }
