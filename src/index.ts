@@ -63,7 +63,7 @@ export type { EnvelopedEvent, SlackEvent };
  * Common input structure shared by createPost and createComment mutations.
  */
 interface MessageInput {
-  body: string;
+  markdown: string;
 }
 
 async function createPost(
@@ -113,7 +113,7 @@ async function createComment(
   bearerToken: string,
   postId: string,
   input: MessageInput
-): Promise<void> {
+): Promise<string | undefined> {
   const mutation = `
     mutation ($postId: ID!, $input: CreateCommentMutationInput!) {
       createComment(postId: $postId, input: $input) {
@@ -146,6 +146,7 @@ async function createComment(
   }
 
   console.log("Created comment:", result.data?.createComment?.node?.id);
+  return result.data?.createComment?.node?.id;
 }
 
 export function createSlackWebhook(
@@ -192,13 +193,29 @@ export function createSlackWebhook(
     const isThreadedReply = threadTs && threadTs !== ts;
 
     // Optionally prefix with username
-    let body = text;
+    let markdown = text;
     if (config.getSlackUsername && userId) {
       const username = await config.getSlackUsername(userId);
 
       if (username) {
-        body = `[${username}] ${text}`;
+        markdown = `[${username}] ${text}`;
       }
+    }
+
+    if (!ts) {
+      console.error("Event has thread id, skipping", event);
+      res.status(400).send();
+      return;
+    }
+
+    const threadIdToDedupe = isThreadedReply ? threadTs : ts;
+    const previousSlashId = await config.slackIdMap?.findSlackIdMapping(
+      threadIdToDedupe
+    );
+    if (previousSlashId) {
+      console.log("Previous slash id found, skipping", previousSlashId, event);
+      res.status(200).send();
+      return;
     }
 
     try {
@@ -217,14 +234,17 @@ export function createSlackWebhook(
           threadTs
         );
         if (parentPostId) {
-          await createComment(
+          const commentId = await createComment(
             config.graphqlEndpoint,
             config.bearerToken,
             parentPostId,
             {
-              body,
+              markdown,
             }
           );
+          if (commentId) {
+            await config.slackIdMap.saveSlackId(threadTs, commentId);
+          }
         } else {
           console.log(
             `No mapping found for thread parent ${threadTs}, skipping comment`
@@ -237,7 +257,7 @@ export function createSlackWebhook(
           config.bearerToken,
           groupId,
           {
-            body,
+            markdown,
           }
         );
 
