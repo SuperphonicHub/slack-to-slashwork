@@ -1,5 +1,5 @@
 import type { EnvelopedEvent } from "@slack/bolt";
-import type { SlackEvent } from "@slack/types";
+import type { SlackEvent, MessageAttachment, KnownBlock, Block } from "@slack/types";
 
 /**
  * Slack URL verification challenge request.
@@ -64,6 +64,269 @@ export type { EnvelopedEvent, SlackEvent };
  */
 interface MessageInput {
   markdown: string;
+}
+
+/**
+ * Converts a single Slack attachment to markdown format.
+ */
+function attachmentToMarkdown(attachment: MessageAttachment): string {
+  const parts: string[] = [];
+
+  // Pretext appears above the attachment
+  if (attachment.pretext) {
+    parts.push(attachment.pretext);
+  }
+
+  // Author info
+  if (attachment.author_name) {
+    if (attachment.author_link) {
+      parts.push(`*[${attachment.author_name}](${attachment.author_link})*`);
+    } else {
+      parts.push(`*${attachment.author_name}*`);
+    }
+  }
+
+  // Title with optional link
+  if (attachment.title) {
+    if (attachment.title_link) {
+      parts.push(`**[${attachment.title}](${attachment.title_link})**`);
+    } else {
+      parts.push(`**${attachment.title}**`);
+    }
+  }
+
+  // Main text body
+  if (attachment.text) {
+    parts.push(attachment.text);
+  }
+
+  // Fields (often used for log samples, key-value data, etc.)
+  if (attachment.fields && attachment.fields.length > 0) {
+    const fieldLines = attachment.fields.map((field) => {
+      if (field.title && field.value) {
+        return `**${field.title}:** ${field.value}`;
+      } else if (field.value) {
+        return field.value;
+      } else if (field.title) {
+        return `**${field.title}**`;
+      }
+      return "";
+    });
+    parts.push(fieldLines.filter(Boolean).join("\n"));
+  }
+
+  // Footer
+  if (attachment.footer) {
+    parts.push(`_${attachment.footer}_`);
+  }
+
+  // Fallback as last resort if nothing else captured content
+  if (parts.length === 0 && attachment.fallback) {
+    parts.push(attachment.fallback);
+  }
+
+  return parts.join("\n\n");
+}
+
+/**
+ * Converts an array of Slack attachments to markdown.
+ */
+function attachmentsToMarkdown(attachments: MessageAttachment[]): string {
+  return attachments
+    .map((attachment) => attachmentToMarkdown(attachment))
+    .filter(Boolean)
+    .join("\n\n---\n\n");
+}
+
+/**
+ * Extracts text content from a TextObject (plain_text or mrkdwn).
+ */
+function textObjectToString(
+  textObj: { type: string; text: string } | undefined
+): string {
+  return textObj?.text ?? "";
+}
+
+/**
+ * Converts a single Slack block to markdown format.
+ * Handles the most common block types used in messages.
+ */
+function blockToMarkdown(block: KnownBlock | Block): string {
+  // Type guard to check if block has a known type
+  const blockType = block.type;
+
+  switch (blockType) {
+    case "section": {
+      const sectionBlock = block as {
+        type: "section";
+        text?: { type: string; text: string };
+        fields?: { type: string; text: string }[];
+      };
+      const parts: string[] = [];
+
+      if (sectionBlock.text) {
+        parts.push(textObjectToString(sectionBlock.text));
+      }
+
+      if (sectionBlock.fields && sectionBlock.fields.length > 0) {
+        const fieldTexts = sectionBlock.fields.map((f) =>
+          textObjectToString(f)
+        );
+        parts.push(fieldTexts.filter(Boolean).join("\n"));
+      }
+
+      return parts.join("\n\n");
+    }
+
+    case "header": {
+      const headerBlock = block as {
+        type: "header";
+        text: { type: string; text: string };
+      };
+      return `## ${textObjectToString(headerBlock.text)}`;
+    }
+
+    case "context": {
+      const contextBlock = block as {
+        type: "context";
+        elements: Array<{ type: string; text?: string; alt_text?: string }>;
+      };
+      const contextParts = contextBlock.elements
+        .map((el) => {
+          if (el.type === "image") {
+            return el.alt_text ?? "";
+          }
+          return (el as { text?: string }).text ?? "";
+        })
+        .filter(Boolean);
+      return `_${contextParts.join(" | ")}_`;
+    }
+
+    case "divider":
+      return "---";
+
+    case "markdown": {
+      const markdownBlock = block as { type: "markdown"; text: string };
+      return markdownBlock.text ?? "";
+    }
+
+    case "rich_text": {
+      // Rich text blocks contain complex nested structure
+      // Extract text from rich_text_section elements
+      const richTextBlock = block as {
+        type: "rich_text";
+        elements: Array<{
+          type: string;
+          elements?: Array<{ type: string; text?: string }>;
+        }>;
+      };
+      const textParts: string[] = [];
+
+      for (const element of richTextBlock.elements ?? []) {
+        if (element.type === "rich_text_section" && element.elements) {
+          const sectionText = element.elements
+            .map((el) => {
+              if (el.type === "text") return el.text ?? "";
+              if (el.type === "link")
+                return (el as { url?: string }).url ?? el.text ?? "";
+              return el.text ?? "";
+            })
+            .join("");
+          textParts.push(sectionText);
+        } else if (element.type === "rich_text_preformatted" && element.elements) {
+          const preText = element.elements.map((el) => el.text ?? "").join("");
+          textParts.push("```\n" + preText + "\n```");
+        } else if (element.type === "rich_text_quote" && element.elements) {
+          const quoteText = element.elements.map((el) => el.text ?? "").join("");
+          textParts.push("> " + quoteText);
+        } else if (element.type === "rich_text_list" && element.elements) {
+          // Handle list items
+          const listElement = element as {
+            type: string;
+            style?: string;
+            elements?: Array<{
+              type: string;
+              elements?: Array<{ type: string; text?: string }>;
+            }>;
+          };
+          const listItems = (listElement.elements ?? []).map((item, index) => {
+            const itemText = (item.elements ?? [])
+              .map((el) => el.text ?? "")
+              .join("");
+            const prefix = listElement.style === "ordered" ? `${index + 1}. ` : "- ";
+            return prefix + itemText;
+          });
+          textParts.push(listItems.join("\n"));
+        }
+      }
+
+      return textParts.join("\n");
+    }
+
+    case "image": {
+      const imageBlock = block as {
+        type: "image";
+        alt_text: string;
+        title?: { type: string; text: string };
+        image_url?: string;
+      };
+      const altText = imageBlock.alt_text ?? "image";
+      const title = imageBlock.title ? textObjectToString(imageBlock.title) : altText;
+      if (imageBlock.image_url) {
+        return `![${title}](${imageBlock.image_url})`;
+      }
+      return `[Image: ${title}]`;
+    }
+
+    default:
+      // For unknown block types, return empty string
+      return "";
+  }
+}
+
+/**
+ * Converts an array of Slack blocks to markdown.
+ */
+function blocksToMarkdown(blocks: (KnownBlock | Block)[]): string {
+  return blocks
+    .map((block) => blockToMarkdown(block))
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * Builds the full markdown content from a Slack message event,
+ * including the main text, attachments, and blocks.
+ */
+function buildFullMarkdown(
+  text: string,
+  attachments?: MessageAttachment[],
+  blocks?: (KnownBlock | Block)[]
+): string {
+  const parts: string[] = [];
+
+  // Main message text
+  if (text) {
+    parts.push(text);
+  }
+
+  // Convert blocks to markdown (newer format)
+  if (blocks && blocks.length > 0) {
+    const blocksMarkdown = blocksToMarkdown(blocks);
+    if (blocksMarkdown) {
+      parts.push(blocksMarkdown);
+    }
+  }
+
+  // Convert attachments to markdown (legacy format, but still used by DataDog, etc.)
+  if (attachments && attachments.length > 0) {
+    const attachmentsMarkdown = attachmentsToMarkdown(attachments);
+    if (attachmentsMarkdown) {
+      parts.push(attachmentsMarkdown);
+    }
+  }
+
+  return parts.join("\n\n");
 }
 
 async function createPost(
@@ -188,17 +451,20 @@ export function createSlackWebhook(
     const ts = (event as { ts?: string }).ts;
     const threadTs = (event as { thread_ts?: string }).thread_ts;
     const userId = (event as { user?: string }).user;
+    const attachments = (event as { attachments?: MessageAttachment[] })
+      .attachments;
+    const blocks = (event as { blocks?: (KnownBlock | Block)[] }).blocks;
 
     // Determine if this is a threaded reply (thread_ts exists and differs from ts)
     const isThreadedReply = threadTs && threadTs !== ts;
 
-    // Optionally prefix with username
-    let markdown = text;
+    // Build full markdown including attachments and blocks
+    let markdown = buildFullMarkdown(text, attachments, blocks);
     if (config.getSlackUsername && userId) {
       const username = await config.getSlackUsername(userId);
 
       if (username) {
-        markdown = `[${username}] ${text}`;
+        markdown = `[${username}] ${markdown}`;
       }
     }
 
